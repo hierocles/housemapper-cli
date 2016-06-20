@@ -2,11 +2,7 @@
   "name": "housemapper-cli",
   "version": "1.0.0",
   "description": "A command-line interface that exports maps of House of Representative votes by bill number",
-  "main": "index.js",
   "private": "true",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "keywords": [
     "congress",
     "votes",
@@ -15,15 +11,12 @@
     "mapper",
     "cli"
   ],
-  "author": {
-    "name": "Dylan Henrich",
-    "email": "dylan@dylanist.com"
-  },
+  "author": "Dylan Henrich <dylan@dylanist.com>",
   "repository": {
     "type": "git",
     "url": "https://github.com/hierocles/housemapper-cli"
   },
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "commander": "^2.9.0",
     "d3": "^3.5.17",
