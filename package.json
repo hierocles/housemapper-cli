@@ -22,8 +22,12 @@
     "d3": "^3.5.17",
     "d3-queue": "^3.0.1",
     "d3-request": "^1.0.0",
+    "govtrack-node": "^0.2.0",
+    "jsdom": "^9.3.0",
+    "lodash": "^4.13.1",
     "svgexport": "^0.3.2",
-    "topojson": "^1.6.26"
+    "topojson": "^1.6.26",
+    "yargs": "^4.7.1"
   },
   "preferGlobal": true,
   "bin": {
