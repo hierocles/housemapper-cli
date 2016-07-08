@@ -222,6 +222,7 @@ function makeMap(fileName) {
 
   var svg = d3.select(document.body).append('svg')
       .attr('xmlns', 'http://www.w3.org/2000/svg')
+      .attr('xmlns:xlink', 'http://www.w3.org/1999/xlink')
       .attr('width', width)
       .attr('height', height);
 
@@ -244,7 +245,7 @@ function makeMap(fileName) {
       defs.append('clipPath')
           .attr('id', 'clip-land')
         .append('use')
-          .attr('xlink:href', '#land');
+          .attr(':xlink:href', '#land');
 
   var g = svg.append('g');
 
