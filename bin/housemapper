@@ -61,23 +61,25 @@ var d3 = require('d3')
     };
 
 var argv = require('yargs')
-    .usage('Usage: housemapper -c [num] -b [num] -f [string]')
+    .usage('Usage: housemapper -c [num] -b [num] -f [string] -w [num] -h [num]')
     .demand(['c', 'b'])
-    .example('housemapper -c 114 -b 4038 -f map.svg', 'Generate a map of votes on H.R. 4038 and save to map.svg')
+    .example('housemapper -c 114 -b 4038 -f map.svg', 'Generate a map of votes on H.R. 4038 and save to map.svg in current working directory')
     .describe('c', 'Congress number (only 114 is supported currently)')
     .describe('b', 'House bill number')
-    .describe('f', 'Filename ending in .svg, defaults to output.svg. File will be saved in current working directory.')
-    .help('h')
-    .alias('h', 'help')
-    .alias('c', 'congress')
-    .alias('b', 'bill')
-    .alias('f', 'file')
+    .describe('f', 'Custom file name ending in .svg (default: output.svg)')
+    .describe('w', 'Custom canvas width in pixels (default: 960)')
+    .describe('h', 'Custom canvas height in pixels (default: 500)')
+    .describe('s', 'Custom CSS stylesheet')
+    .help('help')
     .argv;
 
 if(argv.c > 0 && argv.b > 0) {
   if(argv.c === 114) {
-    argv.f = argv.f || 'output.svg';
-    run(argv.c, argv.b, argv.f);
+    var inputFileName = argv.f || 'output.svg';
+    var inputWidth = argv.w || 960;
+    var inputHeight = argv.h || 500;
+    var inputCssFile = argv.s || 'default.css';
+    run(argv.c, argv.b);
   }
   else {
     console.log('Sorry, only the 114th Congress is supported as this time :(');
@@ -85,7 +87,7 @@ if(argv.c > 0 && argv.b > 0) {
 }
 
 
-function run(congNum, billNum, fileName) {
+function run(congNum, billNum) {
   govTrack.findBill({ congress: congNum, bill_type: 'house_bill', number: billNum}, function(error, result) {
     if (!error) {
       for(var i = 0; i < result.objects[0].major_actions.length; i++) {
@@ -107,7 +109,7 @@ function run(congNum, billNum, fileName) {
                             "party": result.objects[i].person_role.party
                           };
                         }
-                        makeMap(fileName);
+                        makeMap();
                       }
                     });
                   }
@@ -165,56 +167,18 @@ function getColor(d) {
   }
 }
 
-function makeMap(fileName) {
+function makeMap() {
   var document = jsdom.jsdom();
 
-  var us = JSON.parse(fs.readFileSync( __dirname + '/jsonfiles/us.json', 'utf8'));
+  var us = JSON.parse(fs.readFileSync(__dirname + '/jsonfiles/us.json', 'utf8'));
   var congress = JSON.parse(fs.readFileSync(__dirname + '/jsonfiles/us-cong-114.json', 'utf8'));
+  var css = fs.readFileSync(__dirname + '/styles/' + inputCssFile, 'utf8');
 
-  var css = "<![CDATA[ \
-      .background { \
-        fill: none; \
-      } \
-      .district { \
-        fill: #ccc; \
-      } \
-      .district-dem-yes { \
-        fill: #394DE5; \
-      } \
-      .district-dem-no { \
-        fill: #7585FF; \
-      } \
-      .district-rep-yes { \
-        fill: #EA513C; \
-      } \
-      .district-rep-no { \
-        fill: #EA998F; \
-      } \
-      .district-yes { \
-        fill: #03BC82; \
-      } \
-      .district-no { \
-        fill: #3BE2AD; \
-      } \
-      .state-boundaries { \
-        fill: none; \
-        stroke: #fff; \
-        stroke-width: 1px; \
-      } \
-      .district-boundaries { \
-        fill: none; \
-        stroke: #fff; \
-        stroke-width: 0.5px; \
-        stroke-linecap: round; \
-        stroke-linejoin: round; \
-      }\
-  ]]>";
-
-  var width = 960,
-      height = 500;
+  var width = inputWidth,
+      height = inputHeight;
 
   var projection = d3.geo.albersUsa()
-      .scale(1000)
+      .scale(width)
       .translate([width/2, height/2]);
 
   var path = d3.geo.path()
@@ -268,6 +232,5 @@ function makeMap(fileName) {
 
   var output = d3.select(document.body).html().replace(/clippath/g, 'clipPath');
 
-  fs.writeFileSync(fileName, output);
-
+  fs.writeFileSync(inputFileName, output);
 }

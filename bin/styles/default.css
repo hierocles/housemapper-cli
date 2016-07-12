@@ -1,0 +1,38 @@
+<![CDATA[
+    .background {
+      fill: none;
+    }
+    .district {
+      fill: #ccc;
+    }
+    .district-dem-yes {
+      fill: #394DE5;
+    }
+    .district-dem-no {
+      fill: #7585FF;
+    }
+    .district-rep-yes {
+      fill: #EA513C;
+    }
+    .district-rep-no {
+      fill: #EA998F;
+    }
+    .district-yes {
+      fill: #03BC82;
+    }
+    .district-no {
+      fill: #3BE2AD;
+    }
+    .state-boundaries {
+      fill: none;
+      stroke: #fff;
+      stroke-width: 1px;
+    }
+    .district-boundaries {
+      fill: none;
+      stroke: #fff;
+      stroke-width: 0.5px;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+]]>
