@@ -1,10 +1,12 @@
 #!/usr/bin/env node
+Error.stackTraceLimit = 0;
+
 var d3 = require('d3')
   , fs = require('pn/fs')
   , govTrack = require('govtrack-node')
   , jsdom = require('jsdom')
-  , parseString = require('xml2js').parseString
   , topojson = require('topojson')
+  , xmljs = require('xml-js')
   , congressVotes = {}
   , stateToFips = {
       "AK": "2",
@@ -60,82 +62,144 @@ var d3 = require('d3')
       "WY": "56"
     };
 
+
+function errormsg(msg) {
+  console.log('Error: ' + msg);
+  process.exit();
+}
+
 var argv = require('yargs')
-    .usage('Usage: housemapper -c [num] -b [num] -f [string] -w [num] -h [num]')
+    .usage('Basic usage: housemapper -c [num] -b [num]')
     .demand(['c', 'b'])
-    .example('housemapper -c 114 -b 4038 -f map.svg', 'Generate a map of votes on H.R. 4038 and save to map.svg in current working directory')
-    .describe('c', 'Congress number (only 114 is supported currently)')
+    .example('housemapper -c 114 -b 4038', 'Generate a map of votes on H.R. 4038')
+    .describe('c', 'Congress number')
     .describe('b', 'House bill number')
-    .describe('f', 'Custom file name ending in .svg (default: output.svg)')
+    .describe('f', 'Custom file name ending in .svg (default: output.svg), either exact path or in current directory')
     .describe('w', 'Custom canvas width in pixels (default: 960)')
     .describe('h', 'Custom canvas height in pixels (default: 500)')
     .describe('s', 'Custom CSS stylesheet')
+    .describe('force', 'Force use of specific Congress topojson file')
     .help('help')
     .argv;
 
 if(argv.c > 0 && argv.b > 0) {
-  if(argv.c === 114) {
-    var inputFileName = argv.f || 'output.svg';
-    var inputWidth = argv.w || 960;
-    var inputHeight = argv.h || 500;
-    var inputCssFile = argv.s || 'default.css';
-    run(argv.c, argv.b);
+  var inputFileName = argv.f || 'output.svg';
+  var inputWidth = argv.w || 960;
+  var inputHeight = argv.h || 500;
+  var inputCssFile = argv.s || 'default.css';
+
+  if(argv.force > 0) {
+    var topojsonFile = __dirname + '/jsonfiles/us-cong-' + argv.force + '.json';
   }
   else {
-    console.log('Sorry, only the 114th Congress is supported as this time :(');
+    var topojsonFile = __dirname + '/jsonfiles/us-cong-' + argv.c + '.json';
+  }
+
+  try {
+    fs.accessSync(topojsonFile, fs.F_OK);
+    run(argv.c, argv.b);
+  } catch (e) {
+    errormsg('Error: No topojson data for specified Congress in bin/jsonfiles directory. Expecting file: ' + topojsonFile);
   }
 }
 
 
 function run(congNum, billNum) {
+
+  // Grab general bill information from govtrack/api/bill
   govTrack.findBill({ congress: congNum, bill_type: 'house_bill', number: billNum}, function(error, result) {
     if (!error) {
-      for(var i = 0; i < result.objects[0].major_actions.length; i++) {
-        parseString(result.objects[0].major_actions[i][3], function(error, result) {
-          if(!error) {
-            if(result.hasOwnProperty('vote')) {
-              var rollNum = result.vote.$.roll;
-              var sess = new Date(result.vote.$.datetime).getFullYear();
-              if(rollNum > 0) {
-                govTrack.findVote({congress: congNum, chamber: 'house', session: sess, number: rollNum}, function(error, result) {
-                  if (!error) {
-                    var voteID = result.objects[0].id;
-                    govTrack.findVoteVoter({vote: voteID, limit: 441}, function(error, result) {
-                      if(!error) {
-                        for(var i = 0; i < result.objects.length; i++) {
-                          var fips = stateToFips[result.objects[i].person_role.state].toString() + result.objects[i].person_role.district.toString();
-                          congressVotes[fips] = {
-                            "vote": result.objects[i].option.value,
-                            "party": result.objects[i].person_role.party
-                          };
-                        }
-                        makeMap();
-                      }
-                    });
+
+      // Make sure the API has returned usable data
+      if(typeof result.objects[0] !== 'undefined') {
+
+        // We need to get the last major action...
+        var index = result.objects[0].major_actions.length - 1;
+        var json = xmljs.xml2js(result.objects[0].major_actions[index][3], {compact: true});
+
+        // ... which needs to have a 'vote' property with a 'where' attr of 'h'
+        if(json.hasOwnProperty('vote') !== 'true') {
+          // Try again...
+          index = index - 1;
+
+          if(index < 0) {
+            errormsg('According to GovTrack, this bill hasn\'t been voted on yet!');
+          }
+
+          json = xmljs.xml2js(result.objects[0].major_actions[index][3], {compact: true});
+
+          if(json.hasOwnProperty('vote')) {
+            if(json.vote._attributes.where !== 'h') {
+              index = index - 1;
+              json = xmljs.xml2js(result.objects[0].major_actions[index][3], {compact: true});
+            }
+          }
+        }
+
+        // If after doing the above, no 'vote' property is found, then no vote has happened (probably)
+        if(typeof json.vote !== 'undefined') {
+          var rollCallNumber = json.vote._attributes.roll;
+          var sessionYear = new Date(json.vote._attributes.datetime).getFullYear();
+
+          // We need a roll call vote. No roll call vote indicates unanimous consent
+          if(rollCallNumber > 0) {
+
+            // Grab general vote information from govtrack/api/vote
+            govTrack.findVote({congress: congNum, chamber: 'house', session: sessionYear, number: rollCallNumber}, function(error, result) {
+              if (!error) {
+                var voteID = result.objects[0].id;
+
+                // Grab all individual House member votes from govtrack/api/votevoter
+                govTrack.findVoteVoter({vote: voteID, limit: 441}, function(error, result) {
+                  if(!error) {
+                    for(var i = 0; i < result.objects.length; i++) {
+
+                      // Get FIPS state + congressional district code
+                      var fips = stateToFips[result.objects[i].person_role.state].toString() + result.objects[i].person_role.district.toString();
+
+                      congressVotes[fips] = {
+                        "state": result.objects[i].person_role.state,
+                        "vote": result.objects[i].option.value,
+                        "party": result.objects[i].person_role.party
+                      };
+                    }
+
+                    // Run map generator
+                    makeMap();
                   }
                 });
               }
-            }
+            });
           }
           else {
-            console.log('According to GovTrack, this bill hasn\'t been voted on yet!');
+            errormsg('No roll call vote number found! This was possibly a unanimous voice vote, or no vote has occurred yet.');
           }
-        });
+        }
+        else {
+          errormsg('According to GovTrack, this bill hasn\'t been voted on yet!');
+        }
+      }
+      else {
+        errormsg('Error in fetching data from GovTrack. Check Congress number and bill number are valid?');
       }
     }
     else {
-      console.log('Error in fetching data from GovTrack. Check Congress number and bill number are valid?')
+      errormsg('Error in fetching data from GovTrack. Check Congress number and bill number are valid?');
     }
   });
 }
 
 function getColor(d) {
+  // Does ID exist? If not, set to 0, which indicates at-large district
   d.id = d.id || 0;
+
+  // State FIPS codes can be 1 or 2 digits
   var state = d.id < 1000 ? d.id.toString().charAt(0) : d.id.toString().substr(0,2);
   var cd = ((d.id % 100) > 0 ? (d.id % 100) : 0).toString();
   var fips = state + cd;
+
   if(typeof congressVotes[fips] !== 'undefined') {
-    if(congressVotes[fips].vote == ('Aye' || 'Yea')) {
+    if(congressVotes[fips].vote == 'Aye' || congressVotes[fips].vote == 'Yea') {
       if(congressVotes[fips].party == 'Republican') {
         return 'district-rep-yes';
       }
@@ -146,7 +210,7 @@ function getColor(d) {
         return 'district-yes';
       }
     }
-    else if(congressVotes[fips].vote == ('No' || 'Nay')) {
+    else if(congressVotes[fips].vote == 'No' || congressVotes[fips].vote == 'Nay') {
       if(congressVotes[fips].party == 'Republican') {
         return 'district-rep-no';
       }
@@ -171,7 +235,7 @@ function makeMap() {
   var document = jsdom.jsdom();
 
   var us = JSON.parse(fs.readFileSync(__dirname + '/jsonfiles/us.json', 'utf8'));
-  var congress = JSON.parse(fs.readFileSync(__dirname + '/jsonfiles/us-cong-114.json', 'utf8'));
+  var congress = JSON.parse(fs.readFileSync(topojsonFile, 'utf8'));
   var css = fs.readFileSync(__dirname + '/styles/' + inputCssFile, 'utf8');
 
   var width = inputWidth,

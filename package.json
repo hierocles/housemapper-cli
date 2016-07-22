@@ -23,7 +23,7 @@
     "jsdom": "^9.3.0",
     "pn": "^1.0.0",
     "topojson": "^1.6.26",
-    "xml2js": "^0.4.16",
+    "xml-js": "^0.9.3",
     "yargs": "^4.7.1"
   },
   "preferGlobal": true,
